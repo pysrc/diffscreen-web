@@ -20,7 +20,8 @@ extern "C" {
 
 #[wasm_bindgen]
 pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue> {
-    let document = web_sys::window().unwrap().document().unwrap();
+    let window = web_sys::window().unwrap();
+    let document = window.document().unwrap();
     let canvas = document.get_element_by_id(canvas_id).unwrap();
     let canvas: HtmlCanvasElement = canvas
         .dyn_into::<HtmlCanvasElement>()
@@ -59,6 +60,11 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
                 // 初始化w, h
                 w = ((data[0] as u32) << 8) | (data[1] as u32);
                 h = ((data[2] as u32) << 8) | (data[3] as u32);
+                let cw = canvas.width() as f64;
+                let scale = (cw as f64) / (w as f64);
+                let ch = h as f64 * scale;
+                canvas.set_width(cw as u32);
+                canvas.set_height(ch as u32);
                 imcanvas.set_height(h);
                 imcanvas.set_width(w);
                 dlen = (w * h) as usize * 3;

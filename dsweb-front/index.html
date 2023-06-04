@@ -8,18 +8,31 @@
     <script src="./dist/dsweb.js"></script>
 </head>
 <body>
-    <canvas id="canvas" width="1066" height="600" style="margin: 0 auto; display: block;"></canvas>
+    <canvas id="canvas" width="800" style="margin: 0 auto; display: block;"></canvas>
     <div style="margin-top: 10px; margin-left: 48%;">
         <button onclick="start()">开始</button>
         <button onclick="stop()">关闭</button>
+        <button onclick="add()">+</button>
+        <button onclick="sub()">-</button>
     </div>
 </body>
 <script>
+    var scale_rate = 0.05;
     function start() {
         dsweb.start("canvas", "ws://127.0.0.1:41290");
     }
     function stop() {
         dsweb.stop();
+    }
+    function add() {
+        var c = document.getElementById("canvas");
+        c.height = (1 + scale_rate) * c.height;
+        c.width = (1 + scale_rate) * c.width;
+    }
+    function sub() {
+        var c = document.getElementById("canvas");
+        c.height = (1 - scale_rate) * c.height;
+        c.width = (1 - scale_rate) * c.width;
     }
 </script>
 </html>
