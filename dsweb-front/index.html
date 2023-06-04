@@ -8,7 +8,7 @@
     <script src="./dist/dsweb.js"></script>
 </head>
 <body>
-    <canvas id="canvas" width="800" style="margin: 0 auto; display: block;"></canvas>
+    <canvas id="canvas" style="margin: 0 auto; display: block;width: 1000px;"></canvas>
     <div style="margin-top: 10px; margin-left: 48%;">
         <button onclick="start()">开始</button>
         <button onclick="stop()">关闭</button>
@@ -26,13 +26,15 @@
     }
     function add() {
         var c = document.getElementById("canvas");
-        c.height = (1 + scale_rate) * c.height;
-        c.width = (1 + scale_rate) * c.width;
+        var rect = c.getBoundingClientRect();
+        c.style.width = `${(1 + scale_rate) * rect.width}px`;
+        c.style.height = `${(1 + scale_rate) * rect.height}px`;
     }
     function sub() {
         var c = document.getElementById("canvas");
-        c.height = (1 - scale_rate) * c.height;
-        c.width = (1 - scale_rate) * c.width;
+        var rect = c.getBoundingClientRect();
+        c.style.width = `${(1 - scale_rate) * rect.width}px`;
+        c.style.height = `${(1 - scale_rate) * rect.height}px`;
     }
 </script>
 </html>

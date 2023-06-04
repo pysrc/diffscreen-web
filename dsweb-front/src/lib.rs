@@ -27,18 +27,7 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
         .dyn_into::<HtmlCanvasElement>()
         .map_err(|_| ())
         .unwrap();
-    let imcanvas = document.create_element("canvas").unwrap();
-    let imcanvas: HtmlCanvasElement = imcanvas
-        .dyn_into::<HtmlCanvasElement>()
-        .map_err(|_| ())
-        .unwrap();
     let ctx = canvas
-        .get_context("2d")
-        .unwrap()
-        .unwrap()
-        .dyn_into::<CanvasRenderingContext2d>()
-        .unwrap();
-    let imctx = imcanvas
         .get_context("2d")
         .unwrap()
         .unwrap()
@@ -55,18 +44,12 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
             let array = js_sys::Uint8Array::new(&abuf);
             let data = array.to_vec();
             let len = array.byte_length() as usize;
-            let (cw, ch) = (canvas.width() as f64, canvas.height() as f64);
             if len == 4 {
                 // 初始化w, h
                 w = ((data[0] as u32) << 8) | (data[1] as u32);
                 h = ((data[2] as u32) << 8) | (data[3] as u32);
-                let cw = canvas.width() as f64;
-                let scale = (cw as f64) / (w as f64);
-                let ch = h as f64 * scale;
-                canvas.set_width(cw as u32);
-                canvas.set_height(ch as u32);
-                imcanvas.set_height(h);
-                imcanvas.set_width(w);
+                canvas.set_width(w);
+                canvas.set_height(h);
                 dlen = (w * h) as usize * 3;
                 let rlen = (w * h * 4) as usize;
                 real_img = Vec::<u8>::with_capacity(rlen);
@@ -91,8 +74,7 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
                     (c[0], c[1], c[2], c[3]) = (b[0], b[1], b[2], 255u8);
                 });
                 let im = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&real_img), w, h).unwrap();
-                imctx.put_image_data(&im, 0.0, 0.0).unwrap();
-                ctx.draw_image_with_html_canvas_element_and_dw_and_dh(&imcanvas, 0.0, 0.0, cw, ch).unwrap();
+                ctx.put_image_data(&im, 0.0, 0.0).unwrap();
             } else {
                 // 接收差异图像
                 let mut dec = DeflateDecoder::new(&data[..]);
@@ -104,8 +86,7 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
                     (c[0], c[1], c[2], c[3]) = (b[0], b[1], b[2], 255u8);
                 });
                 let im = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&real_img), w, h).unwrap();
-                imctx.put_image_data(&im, 0.0, 0.0).unwrap();
-                ctx.draw_image_with_html_canvas_element_and_dw_and_dh(&imcanvas, 0.0, 0.0, cw, ch).unwrap();
+                ctx.put_image_data(&im, 0.0, 0.0).unwrap();
             }
         }
     }) as Box<dyn FnMut(MessageEvent)>);
