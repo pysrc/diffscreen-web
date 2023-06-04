@@ -4,7 +4,7 @@ var ws = null;
 
 const start = (canvasid, url) => {    
     init().then(()=>{
-        ws = start_websocket("canvas", "ws://127.0.0.1:41290");
+        ws = start_websocket(canvasid, url);
     });
 }
 
