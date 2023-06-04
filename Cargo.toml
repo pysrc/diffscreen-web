@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "dsweb-core",
+    "dscom",
+    "dsweb-front",
+]

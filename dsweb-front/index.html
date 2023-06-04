@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diffscreen</title>
+    <script src="./dist/dsweb.js"></script>
+</head>
+<body>
+    <canvas id="canvas" width="1066" height="600" style="margin: 0 auto; display: block;"></canvas>
+    <div style="margin-top: 10px; margin-left: 48%;">
+        <button onclick="start()">开始</button>
+        <button onclick="stop()">关闭</button>
+    </div>
+</body>
+<script>
+    function start() {
+        dsweb.start("canvas", "ws://127.0.0.1:41290");
+    }
+    function stop() {
+        dsweb.stop();
+    }
+</script>
+</html>

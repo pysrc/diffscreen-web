@@ -1,0 +1,15 @@
+[package]
+name = "dsweb-core"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dscom = {path = "../dscom"}
+websocket = "0.26.5"
+
+flate2 = "1.0"
+scrap = "0.5"
+enigo = "0.0.14"
+rayon = "1.5"
