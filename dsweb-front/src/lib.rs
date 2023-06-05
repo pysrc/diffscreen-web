@@ -1,8 +1,9 @@
-use std::io::Read;
+use std::{io::Read, sync::RwLock, rc::Rc};
 
 use flate2::read::DeflateDecoder;
 use wasm_bindgen::{prelude::*, Clamped};
 use web_sys::{MessageEvent, WebSocket, ErrorEvent, HtmlCanvasElement, CanvasRenderingContext2d, ImageData, KeyboardEvent, MouseEvent, Event, WheelEvent};
+mod bitmap;
 
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
@@ -34,13 +35,15 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
         .unwrap()
         .dyn_into::<CanvasRenderingContext2d>()
         .unwrap();
-    let ws = WebSocket::new_with_str(host, "diffscreen")?;
+    let ws: WebSocket = WebSocket::new_with_str(host, "diffscreen")?;
     ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
     let mut rgb_img = Vec::<u8>::new();
     let mut real_img = Vec::<u8>::new();
     let mut temp = Vec::<u8>::new();
     let (mut w, mut h, mut dlen) = (0u32, 0u32, 0usize);
+    let (fw, fh) = (Rc::new(RwLock::new(0u32)), Rc::new(RwLock::new(0u32)));
     let canvas1 = canvas.clone();
+    let (tfw, tfh) = (fw.clone(), fh.clone());
     let onmessage_callback = Closure::wrap(Box::new(move |e: MessageEvent| {
         if let Ok(abuf) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
             let array = js_sys::Uint8Array::new(&abuf);
@@ -50,6 +53,12 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
                 // 初始化w, h
                 w = ((data[0] as u32) << 8) | (data[1] as u32);
                 h = ((data[2] as u32) << 8) | (data[3] as u32);
+                if let Ok(mut tfw) = tfw.write() {
+                    *tfw = w;
+                }
+                if let Ok(mut tfh) = tfh.write() {
+                    *tfh = h;
+                }
                 canvas1.set_width(w);
                 canvas1.set_height(h);
                 dlen = (w * h) as usize * 3;
@@ -99,6 +108,7 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
     }) as Box<dyn FnMut(ErrorEvent)>);
     ws.set_onerror(Some(onerror_callback.as_ref().unchecked_ref()));
     onerror_callback.forget();
+
     // 鼠标悬停，获取焦点
     let cavas2 = canvas.clone();
     let mouseover = Closure::wrap(Box::new(move |_: MouseEvent| {
@@ -124,50 +134,93 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
     contextmenu.forget();
 
     // 滚轮事件
+    let tws = ws.clone();
     let wheel = Closure::wrap(Box::new(move |e: WheelEvent| {
         e.prevent_default();
         e.stop_propagation();
-        console_log!("wheel {}", e.delta_y());
+        if e.delta_y() > 0.0 {
+            tws.send_with_u8_array(&[dscom::MOUSE_WHEEL_UP]).unwrap();
+        } else {
+            tws.send_with_u8_array(&[dscom::MOUSE_WHEEL_DOWN]).unwrap();
+        }
+        // console_log!("wheel {}", e.delta_y());
     }) as Box<dyn FnMut(WheelEvent)> );
     canvas.set_onwheel(Some(wheel.as_ref().unchecked_ref()));
     wheel.forget();
 
     // 鼠标按下
+    let tws = ws.clone();
     let mousedown = Closure::wrap(Box::new(move |e: MouseEvent| {
         e.prevent_default();
         e.stop_propagation();
         let btn = e.button();
-        console_log!("mousedown {}", btn);
+        tws.send_with_u8_array(&[dscom::MOUSE_KEY_DOWN, btn as u8]).unwrap();
+        // console_log!("mousedown {}", btn);
     }) as Box<dyn FnMut(MouseEvent)> );
     canvas.set_onmousedown(Some(mousedown.as_ref().unchecked_ref()));
     mousedown.forget();
 
     // 鼠标弹起
+    let tws = ws.clone();
     let mouseup = Closure::wrap(Box::new(move |e: MouseEvent| {
         e.prevent_default();
         e.stop_propagation();
         let btn = e.button();
-        console_log!("mouseup {}", btn);
+        tws.send_with_u8_array(&[dscom::MOUSE_KEY_UP, btn as u8]).unwrap();
+        // console_log!("mouseup {}", btn);
     }) as Box<dyn FnMut(MouseEvent)> );
     canvas.set_onmouseup(Some(mouseup.as_ref().unchecked_ref()));
     mouseup.forget();
 
+    // 鼠标移动
+    let vcan = canvas.clone();
+    let tws = ws.clone();
+    let mousemove = Closure::wrap(Box::new(move |e: MouseEvent| {
+        e.prevent_default();
+        e.stop_propagation();
+        let (mut x, mut y) = (0u32, 0u32);
+        if let Ok(fw) = fw.read() {
+            x = (*fw as f32 * e.offset_x() as f32 / vcan.client_width() as f32) as u32;
+        }
+        if let Ok(fh) = fh.read() {
+            y = (*fh as f32 * e.offset_y() as f32 / vcan.client_height() as f32) as u32;
+        }
+        tws.send_with_u8_array(&[dscom::MOVE, (x>>8) as u8, x as u8, (y>>8) as u8, y as u8]).unwrap();
+        // console_log!("mousemove {} {}", x, y);
+    }) as Box<dyn FnMut(MouseEvent)> );
+    canvas.set_onmousemove(Some(mousemove.as_ref().unchecked_ref()));
+    mousemove.forget();
+
     // 键盘按下
+    let bmap = bitmap::Bitmap::new();
+    let bmap = Rc::new(RwLock::new(bmap));
+    let tbmap = bmap.clone();
+    let tws = ws.clone();
     let keydown = Closure::wrap(Box::new(move |e: KeyboardEvent| {
         e.prevent_default();
         e.stop_propagation();
-        let code = e.key_code();
-        console_log!("keydown {}", code);
+        let code = e.key_code() as u8;
+        if let Ok(mut tbmap) = tbmap.write() {
+            if tbmap.push(code) {
+                tws.send_with_u8_array(&[dscom::KEY_DOWN, code]).unwrap();
+            }
+        }
+        // console_log!("keydown {}", code);
     }) as Box<dyn FnMut(KeyboardEvent)>);
     canvas.set_onkeydown(Some(keydown.as_ref().unchecked_ref()));
     keydown.forget();
 
     // 键盘弹起
+    let tws = ws.clone();
     let keyup = Closure::wrap(Box::new(move |e: KeyboardEvent| {
         e.prevent_default();
         e.stop_propagation();
-        let code = e.key_code();
-        console_log!("keyup {}", code);
+        let code = e.key_code() as u8;
+        if let Ok(mut bmap) = bmap.write() {
+            bmap.remove(code);
+        }
+        tws.send_with_u8_array(&[dscom::KEY_UP, code as u8]).unwrap();
+        // console_log!("keyup {}", code);
     }) as Box<dyn FnMut(KeyboardEvent)>);
     canvas.set_onkeyup(Some(keyup.as_ref().unchecked_ref()));
     keyup.forget();

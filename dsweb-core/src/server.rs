@@ -19,7 +19,7 @@ use std::sync::atomic::Ordering;
 use rayon::prelude::*;
 
 pub fn run(port: u16) {
-    let host = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
+    let host = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
     let server = Server::bind(host).unwrap();
     for request in server.filter_map(Result::ok) {
         if !request.protocols().contains(&"diffscreen".to_string()) {
@@ -49,7 +49,13 @@ pub fn run(port: u16) {
 fn event(mut stream: Reader<TcpStream>) {
     let mut enigo = Enigo::new();
     for message in stream.incoming_messages() {
-        let message = message.unwrap();
+        let message = match message {
+            Ok(message) => message,
+            Err(e) => {
+                eprintln!("Msg err {}", e);
+                continue;
+            }
+        };
         match message {
             OwnedMessage::Binary(cmd) => {
                 match cmd[0] {
@@ -93,7 +99,8 @@ fn event(mut stream: Reader<TcpStream>) {
                 println!("Front close !");
                 return;
             }
-            _=> {}
+            _=> {
+            }
         }
         
     }

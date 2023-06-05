@@ -9,7 +9,8 @@
 </head>
 <body>
     <canvas id="canvas" style="margin: 0 auto; display: block;width: 1000px;"></canvas>
-    <div style="margin-top: 10px; margin-left: 48%;">
+    <div style="margin-top: 10px; margin-left: 40%;">
+        <input id="host" value="ws://127.0.0.1:41290">
         <button onclick="start()">开始</button>
         <button onclick="stop()">关闭</button>
         <button onclick="add()">+</button>
@@ -18,8 +19,9 @@
 </body>
 <script>
     var scale_rate = 0.05;
+    var hostdom = document.getElementById("host");
     function start() {
-        dsweb.start("canvas", "ws://127.0.0.1:41290");
+        dsweb.start("canvas", hostdom.value);
     }
     function stop() {
         dsweb.stop();
