@@ -11,5 +11,5 @@ websocket = "0.26.5"
 
 flate2 = "1.0"
 scrap = "0.5"
-enigo = "0.0.14"
+enigo = "0.1.2"
 rayon = "1.5"
