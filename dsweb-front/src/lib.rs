@@ -2,7 +2,7 @@ use std::io::Read;
 
 use flate2::read::DeflateDecoder;
 use wasm_bindgen::{prelude::*, Clamped};
-use web_sys::{MessageEvent, WebSocket, ErrorEvent, HtmlCanvasElement, CanvasRenderingContext2d, ImageData};
+use web_sys::{MessageEvent, WebSocket, ErrorEvent, HtmlCanvasElement, CanvasRenderingContext2d, ImageData, KeyboardEvent, MouseEvent, Event, WheelEvent};
 
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
@@ -27,6 +27,7 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
         .dyn_into::<HtmlCanvasElement>()
         .map_err(|_| ())
         .unwrap();
+    canvas.set_tab_index(1);
     let ctx = canvas
         .get_context("2d")
         .unwrap()
@@ -39,6 +40,7 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
     let mut real_img = Vec::<u8>::new();
     let mut temp = Vec::<u8>::new();
     let (mut w, mut h, mut dlen) = (0u32, 0u32, 0usize);
+    let canvas1 = canvas.clone();
     let onmessage_callback = Closure::wrap(Box::new(move |e: MessageEvent| {
         if let Ok(abuf) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
             let array = js_sys::Uint8Array::new(&abuf);
@@ -48,8 +50,8 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
                 // 初始化w, h
                 w = ((data[0] as u32) << 8) | (data[1] as u32);
                 h = ((data[2] as u32) << 8) | (data[3] as u32);
-                canvas.set_width(w);
-                canvas.set_height(h);
+                canvas1.set_width(w);
+                canvas1.set_height(h);
                 dlen = (w * h) as usize * 3;
                 let rlen = (w * h * 4) as usize;
                 real_img = Vec::<u8>::with_capacity(rlen);
@@ -97,5 +99,79 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
     }) as Box<dyn FnMut(ErrorEvent)>);
     ws.set_onerror(Some(onerror_callback.as_ref().unchecked_ref()));
     onerror_callback.forget();
+    // 鼠标悬停，获取焦点
+    let cavas2 = canvas.clone();
+    let mouseover = Closure::wrap(Box::new(move |_: MouseEvent| {
+        cavas2.focus().unwrap();
+    }) as Box<dyn FnMut(MouseEvent)> );
+    canvas.set_onmouseover(Some(mouseover.as_ref().unchecked_ref()));
+    mouseover.forget();
+
+    // 鼠标离开失去焦点
+    let cavas3 = canvas.clone();
+    let mouseout = Closure::wrap(Box::new(move |_: MouseEvent| {
+        cavas3.blur().unwrap();
+    }) as Box<dyn FnMut(MouseEvent)> );
+    canvas.set_onmouseout(Some(mouseout.as_ref().unchecked_ref()));
+    mouseout.forget();
+
+    // 禁止右键弹出菜单
+    let contextmenu = Closure::wrap(Box::new(move |e: Event| {
+        e.prevent_default();
+        e.stop_propagation();
+    }) as Box<dyn FnMut(Event)> );
+    canvas.set_oncontextmenu(Some(contextmenu.as_ref().unchecked_ref()));
+    contextmenu.forget();
+
+    // 滚轮事件
+    let wheel = Closure::wrap(Box::new(move |e: WheelEvent| {
+        e.prevent_default();
+        e.stop_propagation();
+        console_log!("wheel {}", e.delta_y());
+    }) as Box<dyn FnMut(WheelEvent)> );
+    canvas.set_onwheel(Some(wheel.as_ref().unchecked_ref()));
+    wheel.forget();
+
+    // 鼠标按下
+    let mousedown = Closure::wrap(Box::new(move |e: MouseEvent| {
+        e.prevent_default();
+        e.stop_propagation();
+        let btn = e.button();
+        console_log!("mousedown {}", btn);
+    }) as Box<dyn FnMut(MouseEvent)> );
+    canvas.set_onmousedown(Some(mousedown.as_ref().unchecked_ref()));
+    mousedown.forget();
+
+    // 鼠标弹起
+    let mouseup = Closure::wrap(Box::new(move |e: MouseEvent| {
+        e.prevent_default();
+        e.stop_propagation();
+        let btn = e.button();
+        console_log!("mouseup {}", btn);
+    }) as Box<dyn FnMut(MouseEvent)> );
+    canvas.set_onmouseup(Some(mouseup.as_ref().unchecked_ref()));
+    mouseup.forget();
+
+    // 键盘按下
+    let keydown = Closure::wrap(Box::new(move |e: KeyboardEvent| {
+        e.prevent_default();
+        e.stop_propagation();
+        let code = e.key_code();
+        console_log!("keydown {}", code);
+    }) as Box<dyn FnMut(KeyboardEvent)>);
+    canvas.set_onkeydown(Some(keydown.as_ref().unchecked_ref()));
+    keydown.forget();
+
+    // 键盘弹起
+    let keyup = Closure::wrap(Box::new(move |e: KeyboardEvent| {
+        e.prevent_default();
+        e.stop_propagation();
+        let code = e.key_code();
+        console_log!("keyup {}", code);
+    }) as Box<dyn FnMut(KeyboardEvent)>);
+    canvas.set_onkeyup(Some(keyup.as_ref().unchecked_ref()));
+    keyup.forget();
+
+
     Ok(ws)
 }
