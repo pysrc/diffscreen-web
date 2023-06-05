@@ -138,7 +138,7 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
     let wheel = Closure::wrap(Box::new(move |e: WheelEvent| {
         e.prevent_default();
         e.stop_propagation();
-        if e.delta_y() > 0.0 {
+        if e.delta_y() < 0.0 {
             tws.send_with_u8_array(&[dscom::MOUSE_WHEEL_UP]).unwrap();
         } else {
             tws.send_with_u8_array(&[dscom::MOUSE_WHEEL_DOWN]).unwrap();
