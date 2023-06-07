@@ -9,3 +9,8 @@
 `cargo build --release`
 
 然后切换到dsweb-front，编译前端工程，参照里面的README
+
+## 第三方库依赖安装（主要是linux）
+
+* https://github.com/quadrupleslap/scrap
+* https://github.com/enigo-rs/enigo
