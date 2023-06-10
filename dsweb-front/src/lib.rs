@@ -1,8 +1,11 @@
-use std::{io::Read, sync::RwLock, rc::Rc};
+use std::{rc::Rc, sync::RwLock, io::Write};
 
-use flate2::read::DeflateDecoder;
+use flate2::write::GzDecoder;
 use wasm_bindgen::{prelude::*, Clamped};
-use web_sys::{MessageEvent, WebSocket, ErrorEvent, HtmlCanvasElement, CanvasRenderingContext2d, ImageData, KeyboardEvent, MouseEvent, Event, WheelEvent};
+use web_sys::{
+    CanvasRenderingContext2d, ErrorEvent, Event, HtmlCanvasElement, ImageData, KeyboardEvent,
+    MessageEvent, MouseEvent, WebSocket, WheelEvent,
+};
 mod bitmap;
 
 #[cfg(feature = "wee_alloc")]
@@ -37,10 +40,8 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
         .unwrap();
     let ws: WebSocket = WebSocket::new_with_str(host, "diffscreen")?;
     ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
-    let mut rgb_img = Vec::<u8>::new();
     let mut real_img = Vec::<u8>::new();
-    let mut temp = Vec::<u8>::new();
-    let (mut w, mut h, mut dlen) = (0u32, 0u32, 0usize);
+    let (mut sw, mut sh, mut srw) = (0u32, 0u32, 0u32);
     let (fw, fh) = (Rc::new(RwLock::new(0u32)), Rc::new(RwLock::new(0u32)));
     let canvas1 = canvas.clone();
     let (tfw, tfh) = (fw.clone(), fh.clone());
@@ -49,55 +50,41 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
             let array = js_sys::Uint8Array::new(&abuf);
             let data = array.to_vec();
             let len = array.byte_length() as usize;
-            if len == 4 {
+            if len == 8 {
                 // 初始化w, h
-                w = ((data[0] as u32) << 8) | (data[1] as u32);
-                h = ((data[2] as u32) << 8) | (data[3] as u32);
+                let w = ((data[0] as u32) << 8) | (data[1] as u32);
+                let h = ((data[2] as u32) << 8) | (data[3] as u32);
+                sw = ((data[4] as u32) << 8) | (data[5] as u32);
+                sh = ((data[6] as u32) << 8) | (data[7] as u32);
                 if let Ok(mut tfw) = tfw.write() {
                     *tfw = w;
                 }
                 if let Ok(mut tfh) = tfh.write() {
                     *tfh = h;
                 }
+                srw = (w / sw) + if w % sw == 0 { 0u32 } else { 1u32 };
                 canvas1.set_width(w);
                 canvas1.set_height(h);
-                dlen = (w * h) as usize * 3;
-                let rlen = (w * h * 4) as usize;
-                real_img = Vec::<u8>::with_capacity(rlen);
-                unsafe {
-                    real_img.set_len(rlen);
-                }
-                temp = Vec::with_capacity(dlen);
-                unsafe {
-                    temp.set_len(dlen);
-                }
-                console_log!("w = {} h = {} dlen = {}", w, h, dlen);
-            } else if rgb_img.len() == 0 {
-                rgb_img = Vec::with_capacity(dlen);
-                unsafe {
-                    rgb_img.set_len(dlen);
-                }
-                // 接收原图像
-                let mut dec = DeflateDecoder::new(&data[..]);
-                dec.read_exact(&mut temp).unwrap();
-                rgb_img.copy_from_slice(&temp);
-                real_img.chunks_exact_mut(4).zip(rgb_img.chunks_exact(3)).for_each(|(c, b)|{
-                    (c[0], c[1], c[2], c[3]) = (b[0], b[1], b[2], 255u8);
-                });
-                let im = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&real_img), w, h).unwrap();
-                ctx.put_image_data(&im, 0.0, 0.0).unwrap();
+                console_log!("w = {} h = {}", w, h);
+                real_img = vec![0u8; (sw * sh * 4) as usize];
             } else {
-                // 接收差异图像
-                let mut dec = DeflateDecoder::new(&data[..]);
-                dec.read_exact(&mut temp).unwrap();
-                rgb_img.iter_mut().zip(temp.iter()).for_each(|(d1, d2)| {
-                    *d1 ^= *d2;
-                });
-                real_img.chunks_exact_mut(4).zip(rgb_img.chunks_exact(3)).for_each(|(c, b)|{
-                    (c[0], c[1], c[2], c[3]) = (b[0], b[1], b[2], 255u8);
-                });
-                let im = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&real_img), w, h).unwrap();
-                ctx.put_image_data(&im, 0.0, 0.0).unwrap();
+                // 接收原图像
+                let mut row_recv = Vec::new();
+                let mut e = GzDecoder::new(row_recv);
+                e.write_all(&data).unwrap();
+                row_recv = e.finish().unwrap();
+                real_img
+                    .chunks_exact_mut(4)
+                    .zip((&row_recv[2..]).chunks_exact(3))
+                    .for_each(|(c, b)| {
+                        (c[0], c[1], c[2], c[3]) = (b[0], b[1], b[2], 255u8);
+                    });
+                let im = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&real_img), sw, sh)
+                    .unwrap();
+                let k = ((row_recv[0] as u32) << 8) | (row_recv[1] as u32);
+                let ih = sh * (k / srw);
+                let iw = sw * (k % srw);
+                ctx.put_image_data(&im, iw as f64, ih as f64).unwrap();
             }
         }
     }) as Box<dyn FnMut(MessageEvent)>);
@@ -113,7 +100,7 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
     let cavas2 = canvas.clone();
     let mouseover = Closure::wrap(Box::new(move |_: MouseEvent| {
         cavas2.focus().unwrap();
-    }) as Box<dyn FnMut(MouseEvent)> );
+    }) as Box<dyn FnMut(MouseEvent)>);
     canvas.set_onmouseover(Some(mouseover.as_ref().unchecked_ref()));
     mouseover.forget();
 
@@ -121,7 +108,7 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
     let cavas3 = canvas.clone();
     let mouseout = Closure::wrap(Box::new(move |_: MouseEvent| {
         cavas3.blur().unwrap();
-    }) as Box<dyn FnMut(MouseEvent)> );
+    }) as Box<dyn FnMut(MouseEvent)>);
     canvas.set_onmouseout(Some(mouseout.as_ref().unchecked_ref()));
     mouseout.forget();
 
@@ -129,7 +116,7 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
     let contextmenu = Closure::wrap(Box::new(move |e: Event| {
         e.prevent_default();
         e.stop_propagation();
-    }) as Box<dyn FnMut(Event)> );
+    }) as Box<dyn FnMut(Event)>);
     canvas.set_oncontextmenu(Some(contextmenu.as_ref().unchecked_ref()));
     contextmenu.forget();
 
@@ -144,7 +131,7 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
             tws.send_with_u8_array(&[dscom::MOUSE_WHEEL_DOWN]).unwrap();
         }
         // console_log!("wheel {}", e.delta_y());
-    }) as Box<dyn FnMut(WheelEvent)> );
+    }) as Box<dyn FnMut(WheelEvent)>);
     canvas.set_onwheel(Some(wheel.as_ref().unchecked_ref()));
     wheel.forget();
 
@@ -154,9 +141,10 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
         e.prevent_default();
         e.stop_propagation();
         let btn = e.button();
-        tws.send_with_u8_array(&[dscom::MOUSE_KEY_DOWN, btn as u8]).unwrap();
+        tws.send_with_u8_array(&[dscom::MOUSE_KEY_DOWN, btn as u8])
+            .unwrap();
         // console_log!("mousedown {}", btn);
-    }) as Box<dyn FnMut(MouseEvent)> );
+    }) as Box<dyn FnMut(MouseEvent)>);
     canvas.set_onmousedown(Some(mousedown.as_ref().unchecked_ref()));
     mousedown.forget();
 
@@ -166,9 +154,10 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
         e.prevent_default();
         e.stop_propagation();
         let btn = e.button();
-        tws.send_with_u8_array(&[dscom::MOUSE_KEY_UP, btn as u8]).unwrap();
+        tws.send_with_u8_array(&[dscom::MOUSE_KEY_UP, btn as u8])
+            .unwrap();
         // console_log!("mouseup {}", btn);
-    }) as Box<dyn FnMut(MouseEvent)> );
+    }) as Box<dyn FnMut(MouseEvent)>);
     canvas.set_onmouseup(Some(mouseup.as_ref().unchecked_ref()));
     mouseup.forget();
 
@@ -185,9 +174,16 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
         if let Ok(fh) = fh.read() {
             y = (*fh as f32 * e.offset_y() as f32 / vcan.client_height() as f32) as u32;
         }
-        tws.send_with_u8_array(&[dscom::MOVE, (x>>8) as u8, x as u8, (y>>8) as u8, y as u8]).unwrap();
+        tws.send_with_u8_array(&[
+            dscom::MOVE,
+            (x >> 8) as u8,
+            x as u8,
+            (y >> 8) as u8,
+            y as u8,
+        ])
+        .unwrap();
         // console_log!("mousemove {} {}", x, y);
-    }) as Box<dyn FnMut(MouseEvent)> );
+    }) as Box<dyn FnMut(MouseEvent)>);
     canvas.set_onmousemove(Some(mousemove.as_ref().unchecked_ref()));
     mousemove.forget();
 
@@ -219,12 +215,12 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
         if let Ok(mut bmap) = bmap.write() {
             bmap.remove(code);
         }
-        tws.send_with_u8_array(&[dscom::KEY_UP, code as u8]).unwrap();
+        tws.send_with_u8_array(&[dscom::KEY_UP, code as u8])
+            .unwrap();
         // console_log!("keyup {}", code);
     }) as Box<dyn FnMut(KeyboardEvent)>);
     canvas.set_onkeyup(Some(keyup.as_ref().unchecked_ref()));
     keyup.forget();
-
 
     Ok(ws)
 }

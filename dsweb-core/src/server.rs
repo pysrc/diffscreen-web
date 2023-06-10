@@ -4,7 +4,7 @@ use enigo::Enigo;
 use enigo::KeyboardControllable;
 use enigo::MouseControllable;
 use flate2::Compression;
-use flate2::write::DeflateEncoder;
+use flate2::write::GzEncoder;
 use websocket::OwnedMessage;
 use websocket::sync::Reader;
 use websocket::sync::Server;
@@ -16,7 +16,6 @@ use std::net::TcpStream;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use rayon::prelude::*;
 
 pub fn run(port: u16) {
     let host = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
@@ -106,33 +105,6 @@ fn event(mut stream: Reader<TcpStream>) {
     }
 }
 
-
-/*
-a: 老图像
-b: 新图像
-return: 老图像, 待发送图像
- */
-#[inline]
-fn cap_and_swap(mut enzip: DeflateEncoder<Vec<u8>>, mut cap: Cap, mut a: Vec<u8>, mut b: Vec<u8>) -> (DeflateEncoder<Vec<u8>>, Cap, Vec<u8>, Vec<u8>) {
-    loop {
-        cap.cap(&mut b);
-        if a == b {
-            continue;
-        }
-        // 计算差异
-        a.par_iter_mut().zip(b.par_iter()).for_each(|(d1, d2)|{
-            *d1 ^= *d2;
-        });
-        // 压缩
-        enzip.write_all(&mut a).unwrap();
-        unsafe {
-            a.set_len(0);
-        }
-        let c = enzip.reset(a).unwrap();
-        return (enzip, cap, b, c);
-    }
-}
-
 fn get_data(data: OwnedMessage) -> Vec<u8> {
     if let OwnedMessage::Binary(x) = data {
         return x;
@@ -147,36 +119,38 @@ fn ws_send(mut stream: Writer<TcpStream>, data: Vec<u8>) -> (Writer<TcpStream>, 
 }
 
 fn screen_stream(mut stream: Writer<TcpStream>, running: Arc<AtomicBool>) {
-    let mut cap = Cap::new();
-    let (w, h) = cap.wh();
-    let dlen = w * h * 3;
-    let mut a = Vec::<u8>::with_capacity(dlen);
-    let b: Vec<u8> = Vec::<u8>::with_capacity(dlen);
-    let c = Vec::<u8>::with_capacity(dlen);
-    let mut enzip = DeflateEncoder::new(c, Compression::default());
-
-    // 发送w, h
-    let mut meta = vec![0u8;4];
+    let mut cap = Cap::new(100, 50, 2);
+    let (w, h, sw, sh, _) = cap.size_info();
+    let (mut a, srw, srh) = dscom::get_rgb_block(w, h, sw, sh, 2);
+    let block_len = srw * srh;
+    let (mut b, _, _) = dscom::get_rgb_block(w, h, sw, sh, 2);
+    // 发送w, h, sw, sh
+    let mut meta = vec![0u8;8];
     meta[0] = (w >> 8) as u8;
     meta[1] = w as u8;
     meta[2] = (h >> 8) as u8;
     meta[3] = h as u8;
+    meta[4] = (sw >> 8) as u8;
+    meta[5] = sw as u8;
+    meta[6] = (sh >> 8) as u8;
+    meta[7] = sh as u8;
     (stream, _) = ws_send(stream, meta);
-    
-    // 第一帧
-    unsafe {
-        a.set_len(dlen);
-    }
-    cap.cap(&mut a);
-    // 压缩
-    enzip.write_all(&a).unwrap();
-    let mut b = enzip.reset(b).unwrap();
-    (stream, b) = ws_send(stream, b);
+    let mut sendbuf = Vec::<u8>::with_capacity(sw * sh * 3);
     while running.load(Ordering::Relaxed) {
-        unsafe {
-            b.set_len(dlen);
+        cap.cap(&mut b);
+        // 对比a
+        for i in 0..block_len {
+            let (a, b) = (&a[i], &b[i]);
+            if a != b {
+                unsafe {
+                    sendbuf.set_len(0);
+                }
+                let mut e = GzEncoder::new(sendbuf, Compression::default());
+                e.write_all(&b).unwrap();
+                sendbuf = e.finish().unwrap();
+                (stream, sendbuf) = ws_send(stream, sendbuf);
+            }
         }
-        (enzip, cap, a, b) = cap_and_swap(enzip, cap, a, b);
-        (stream, b) = ws_send(stream, b);
+        (a, b) = (b, a);
     }
 }

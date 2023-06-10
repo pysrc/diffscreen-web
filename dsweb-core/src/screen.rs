@@ -2,9 +2,7 @@ use scrap::Capturer;
 use scrap::Display;
 use std::io::ErrorKind::WouldBlock;
 use std::time::Duration;
-use rayon::prelude::*;
-
-use crate::config;
+use crate::imop;
 
 /**
  * 截屏
@@ -12,19 +10,23 @@ use crate::config;
 pub struct Cap {
     w: usize,
     h: usize,
-    // org_len: usize,
+    sw: usize, 
+    sh: usize, 
+    offset: usize,
     capturer: Option<Capturer>,
     sleep: Duration,
 }
 impl Cap {
-    pub fn new() -> Cap {
+    pub fn new(sw: usize, sh: usize, offset: usize) -> Cap {
         let display = Display::primary().unwrap();
         let capturer = Capturer::new(display).unwrap();
         let (w, h) = (capturer.width(), capturer.height());
         Cap {
             w,
             h,
-            // org_len: w * h * 4,
+            sw,
+            sh,
+            offset,
             capturer: Some(capturer),
             sleep: Duration::new(1, 0) / 60,
         }
@@ -46,11 +48,11 @@ impl Cap {
         self.capturer = Some(capturer);
     }
     #[inline]
-    pub fn wh(&self) -> (usize, usize) {
-        return (self.w, self.h);
+    pub fn size_info(&self) -> (usize, usize, usize, usize, usize) {
+        return (self.w, self.h, self.sw, self.sh, self.offset);
     }
     #[inline]
-    pub fn cap(&mut self, cap_buf: &mut [u8]) {
+    pub fn cap(&mut self, cap_buf: &mut Vec<Vec<u8>>) {
         loop {
             match &mut self.capturer {
                 Some(capturer) => {
@@ -70,13 +72,8 @@ impl Cap {
                             }
                         }
                     };
-
                     // 转换成rgb图像数组
-                    cap_buf.par_chunks_exact_mut(3).zip(buffer.par_chunks_exact(4)).for_each(|(c, b)|{
-                        c[0] = b[2] & config::BIT_MASK;
-                        c[1] = b[1] & config::BIT_MASK;
-                        c[2] = b[0] & config::BIT_MASK;
-                    });
+                    imop::sub_areas_bgra(&buffer, cap_buf, self.w, self.h, self.sw, self.sh, self.offset);
                     break;
                 }
                 None => {
