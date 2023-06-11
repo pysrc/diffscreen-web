@@ -5,7 +5,7 @@ use enigo::Enigo;
 use enigo::KeyboardControllable;
 use enigo::MouseControllable;
 use flate2::Compression;
-use flate2::write::ZlibEncoder;
+use flate2::write::DeflateEncoder;
 use websocket::OwnedMessage;
 use websocket::sync::Reader;
 use websocket::sync::Server;
@@ -149,24 +149,23 @@ fn screen_stream(mut stream: Writer<TcpStream>, running: Arc<AtomicBool>) {
     meta[6] = (sh >> 8) as u8;
     meta[7] = sh as u8;
     (stream, _) = ws_send(stream, meta);
-    let mut sendbuf = Vec::<u8>::with_capacity(sw * sh * 3);
+    let mut sendbuf = Vec::<u8>::with_capacity(1024 * 4);
     while running.load(Ordering::Relaxed) {
         cap.cap(&mut b);
         // 对比a
+        unsafe {
+            sendbuf.set_len(0);
+        }
+        let mut e = DeflateEncoder::new(sendbuf, Compression::default());
         for i in 0..block_len {
-            let (a, b) = (&mut a[i], &b[i]);
+            let (a, b) = (&a[i], &b[i]);
             if a != b {
-                unsafe {
-                    sendbuf.set_len(0);
-                }
-                a[2..].iter_mut().zip(b[2..].iter()).for_each(|(x, y)|{
-                    *x ^= *y;
-                });
-                let mut e = ZlibEncoder::new(sendbuf, Compression::default());
-                e.write_all(&a).unwrap();
-                sendbuf = e.finish().unwrap();
-                (stream, sendbuf) = ws_send(stream, sendbuf);
+                e.write_all(&b).unwrap();
             }
+        }
+        sendbuf = e.finish().unwrap();
+        if sendbuf.len() > 0 {
+            (stream, sendbuf) = ws_send(stream, sendbuf);
         }
         (a, b) = (b, a);
     }
