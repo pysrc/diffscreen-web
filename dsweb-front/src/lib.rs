@@ -79,7 +79,6 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
                     let temp = &row_recv[..end];
                     row_recv = &row_recv[end..];
                     let k = ((temp[0] as usize) << 8) | (temp[1] as usize);
-                    console_log!("{}", k);
                     real_img
                         .chunks_exact_mut(4)
                         .zip((temp[2..]).chunks_exact(3))
