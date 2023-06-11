@@ -8,9 +8,9 @@ pub fn sub_areas_bgra(bgra: &[u8], recs: &mut Vec<Vec<u8>>, w: usize, h: usize, 
             let rec = &mut recs[i];
             let rec = &mut rec[offset..];
             for j in 0..sh {
+                let py = y + j;
                 for k in 0..sw {
                     let px = x + k;
-                    let py = y + j;
                     if px < w && py < h {
                         let index = (py*w + px) * 4;
                         let r = bgra[index + 2];

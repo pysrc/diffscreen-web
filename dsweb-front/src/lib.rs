@@ -1,6 +1,6 @@
 use std::{rc::Rc, sync::RwLock, io::Write};
 
-use flate2::write::GzDecoder;
+use flate2::write::ZlibDecoder;
 use wasm_bindgen::{prelude::*, Clamped};
 use web_sys::{
     CanvasRenderingContext2d, ErrorEvent, Event, HtmlCanvasElement, ImageData, KeyboardEvent,
@@ -20,6 +20,19 @@ macro_rules! console_log {
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
+}
+
+/// 初始化rgb块
+fn get_rgb_block(w: usize, h: usize, sw: usize, sh: usize, offset: usize) -> (Vec<Vec<u8>>, u32, u32) {
+    let srw = (w / sw) + if w % sw == 0 {0usize} else {1usize};
+    let srh = (h / sh) + if h % sh == 0 {0usize} else {1usize};
+    let num = srw * srh;
+    let mut buf = vec![vec![0u8;offset + sw*sh*3];num];
+    for i in 0..(srw * srh) {
+        buf[i][offset - 2] = (i >> 8) as u8;
+        buf[i][offset - 1] = i as u8;
+    }
+    (buf, srw as u32, srh as u32)
 }
 
 #[wasm_bindgen]
@@ -45,6 +58,7 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
     let (fw, fh) = (Rc::new(RwLock::new(0u32)), Rc::new(RwLock::new(0u32)));
     let canvas1 = canvas.clone();
     let (tfw, tfh) = (fw.clone(), fh.clone());
+    let mut srcs = Vec::<Vec<u8>>::new();
     let onmessage_callback = Closure::wrap(Box::new(move |e: MessageEvent| {
         if let Ok(abuf) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
             let array = js_sys::Uint8Array::new(&abuf);
@@ -56,13 +70,13 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
                 let h = ((data[2] as u32) << 8) | (data[3] as u32);
                 sw = ((data[4] as u32) << 8) | (data[5] as u32);
                 sh = ((data[6] as u32) << 8) | (data[7] as u32);
+                (srcs, srw, _) = get_rgb_block(w as usize, h as usize, sw as usize, sh as usize, 2);
                 if let Ok(mut tfw) = tfw.write() {
                     *tfw = w;
                 }
                 if let Ok(mut tfh) = tfh.write() {
                     *tfh = h;
                 }
-                srw = (w / sw) + if w % sw == 0 { 0u32 } else { 1u32 };
                 canvas1.set_width(w);
                 canvas1.set_height(h);
                 console_log!("w = {} h = {}", w, h);
@@ -70,20 +84,25 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
             } else {
                 // 接收原图像
                 let mut row_recv = Vec::new();
-                let mut e = GzDecoder::new(row_recv);
+                let mut e = ZlibDecoder::new(row_recv);
                 e.write_all(&data).unwrap();
                 row_recv = e.finish().unwrap();
+                let k = ((row_recv[0] as usize) << 8) | (row_recv[1] as usize);
+                srcs[k][2..].iter_mut().zip(&row_recv[2..]).for_each(|(x, y)|{
+                    *x ^= *y;
+                });
+                
+
                 real_img
                     .chunks_exact_mut(4)
-                    .zip((&row_recv[2..]).chunks_exact(3))
+                    .zip((srcs[k][2..]).chunks_exact(3))
                     .for_each(|(c, b)| {
                         (c[0], c[1], c[2], c[3]) = (b[0], b[1], b[2], 255u8);
                     });
                 let im = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&real_img), sw, sh)
                     .unwrap();
-                let k = ((row_recv[0] as u32) << 8) | (row_recv[1] as u32);
-                let ih = sh * (k / srw);
-                let iw = sw * (k % srw);
+                let ih = sh * (k as u32 / srw);
+                let iw = sw * (k as u32 % srw);
                 ctx.put_image_data(&im, iw as f64, ih as f64).unwrap();
             }
         }

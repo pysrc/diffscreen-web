@@ -1,10 +1,11 @@
+use crate::config;
 use crate::key_mouse;
 use crate::screen::Cap;
 use enigo::Enigo;
 use enigo::KeyboardControllable;
 use enigo::MouseControllable;
 use flate2::Compression;
-use flate2::write::GzEncoder;
+use flate2::write::ZlibEncoder;
 use websocket::OwnedMessage;
 use websocket::sync::Reader;
 use websocket::sync::Server;
@@ -112,6 +113,19 @@ fn get_data(data: OwnedMessage) -> Vec<u8> {
     return Vec::new();
 }
 
+/// 初始化rgb块
+fn get_rgb_block(w: usize, h: usize, sw: usize, sh: usize, offset: usize) -> (Vec<Vec<u8>>, usize, usize) {
+    let srw = (w / sw) + if w % sw == 0 {0usize} else {1usize};
+    let srh = (h / sh) + if h % sh == 0 {0usize} else {1usize};
+    let num = srw * srh;
+    let mut buf = vec![vec![0u8;offset + sw*sh*3];num];
+    for i in 0..(srw * srh) {
+        buf[i][offset - 2] = (i >> 8) as u8;
+        buf[i][offset - 1] = i as u8;
+    }
+    (buf, srw, srh)
+}
+
 fn ws_send(mut stream: Writer<TcpStream>, data: Vec<u8>) -> (Writer<TcpStream>, Vec<u8>) {
     let om = OwnedMessage::Binary(data);
     stream.send_message(&om).unwrap();
@@ -119,11 +133,11 @@ fn ws_send(mut stream: Writer<TcpStream>, data: Vec<u8>) -> (Writer<TcpStream>, 
 }
 
 fn screen_stream(mut stream: Writer<TcpStream>, running: Arc<AtomicBool>) {
-    let mut cap = Cap::new(100, 50, 2);
+    let mut cap = Cap::new(config::SW, config::SH, 2);
     let (w, h, sw, sh, _) = cap.size_info();
-    let (mut a, srw, srh) = dscom::get_rgb_block(w, h, sw, sh, 2);
+    let (mut a, srw, srh) = get_rgb_block(w, h, sw, sh, 2);
     let block_len = srw * srh;
-    let (mut b, _, _) = dscom::get_rgb_block(w, h, sw, sh, 2);
+    let (mut b, _, _) = get_rgb_block(w, h, sw, sh, 2);
     // 发送w, h, sw, sh
     let mut meta = vec![0u8;8];
     meta[0] = (w >> 8) as u8;
@@ -140,13 +154,16 @@ fn screen_stream(mut stream: Writer<TcpStream>, running: Arc<AtomicBool>) {
         cap.cap(&mut b);
         // 对比a
         for i in 0..block_len {
-            let (a, b) = (&a[i], &b[i]);
+            let (a, b) = (&mut a[i], &b[i]);
             if a != b {
                 unsafe {
                     sendbuf.set_len(0);
                 }
-                let mut e = GzEncoder::new(sendbuf, Compression::default());
-                e.write_all(&b).unwrap();
+                a[2..].iter_mut().zip(b[2..].iter()).for_each(|(x, y)|{
+                    *x ^= *y;
+                });
+                let mut e = ZlibEncoder::new(sendbuf, Compression::default());
+                e.write_all(&a).unwrap();
                 sendbuf = e.finish().unwrap();
                 (stream, sendbuf) = ws_send(stream, sendbuf);
             }
