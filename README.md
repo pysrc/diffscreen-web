@@ -6,7 +6,7 @@
 
 在root目录下可以编译dsweb-core，这个是被控端需要运行的程序
 
-`cargo build --release`
+`cargo build --release --workspace --exclude dsweb-front`
 
 然后切换到dsweb-front，编译前端工程，参照里面的README
 
