@@ -16,12 +16,19 @@
         <button onclick="add()">+</button>
         <button onclick="sub()">-</button>
     </div>
+    <div style="margin-top: 10px;margin-left: 30%;">
+        <div>
+            <textarea id="transfer" style="height: 100px;width: 50%;"></textarea>
+        </div>
+        <button onclick="dsweb.copy_text()">复制出来（文本）</button>
+        <button onclick="dsweb.paste_text()">复制进去（文本）</button>
+    </div>
 </body>
 <script>
     var scale_rate = 0.05;
     var hostdom = document.getElementById("host");
     function start() {
-        dsweb.start("canvas", hostdom.value);
+        dsweb.start("canvas", "transfer", hostdom.value);
     }
     function stop() {
         dsweb.stop();

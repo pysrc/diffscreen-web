@@ -1,11 +1,14 @@
 use crate::config;
 use crate::key_mouse;
 use crate::screen::Cap;
+use clipboard::ClipboardContext;
+use clipboard::ClipboardProvider;
 use enigo::Enigo;
 use enigo::KeyboardControllable;
 use enigo::MouseControllable;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
+use websocket::sync::Client;
 use std::io::Write;
 use std::net::Ipv4Addr;
 use std::net::SocketAddrV4;
@@ -49,8 +52,12 @@ pub fn run(port: u16) {
                     println!("Break !");
                 });
             }
-            "paste" => {
-                // 处理粘贴
+            "diffscreen-transfer" => {
+                // 处理复制粘贴、文件
+                let client = request.use_protocol("diffscreen-transfer").accept().unwrap();
+                std::thread::spawn(move ||{
+                    handle_transfer(client);
+                });
             }
             _ => {
                 request.reject().unwrap();
@@ -137,7 +144,7 @@ fn get_rgb_block(
     let srw = (w / sw) + if w % sw == 0 { 0usize } else { 1usize };
     let srh = (h / sh) + if h % sh == 0 { 0usize } else { 1usize };
     let num = srw * srh;
-    let mut buf = vec![vec![0u8; offset + sw * sh * 3]; num];
+    let mut buf = vec![vec![255u8; offset + sw * sh * 3]; num];
     for i in 0..(srw * srh) {
         buf[i][offset - 2] = (i >> 8) as u8;
         buf[i][offset - 1] = i as u8;
@@ -188,5 +195,42 @@ fn screen_stream(mut stream: Writer<TcpStream>, running: Arc<AtomicBool>) {
             (stream, sendbuf) = ws_send(stream, sendbuf);
         }
         (a, b) = (b, a);
+    }
+}
+
+
+fn handle_transfer(client: Client<TcpStream>) {
+    let (mut receiver, mut sender) = client.split().unwrap();
+    let mut cbctx: ClipboardContext = ClipboardProvider::new().unwrap();
+    for message in receiver.incoming_messages() {
+        let message = match message {
+            Ok(message) => message,
+            Err(e) => {
+                eprintln!("Msg err {}", e);
+                return;
+            }
+        };
+        match message {
+            OwnedMessage::Text(ctx) => {
+                if ctx.starts_with("paste-text") {
+                    let ctx = ctx.replacen("paste-text ", "", 1);
+                    cbctx.set_contents(ctx).unwrap();
+                } else if ctx.starts_with("copy-text") {
+                    if let Ok(mut txt) = cbctx.get_contents() {
+                        txt.insert_str(0, "copy-text ");
+                        sender.send_message(&OwnedMessage::Text(txt)).unwrap();
+                    }
+                }
+            }
+            OwnedMessage::Ping(ping) => {
+                let message = OwnedMessage::Pong(ping);
+                sender.send_message(&message).unwrap();
+            }
+            OwnedMessage::Close(_) => {
+                println!("Front transfer close !");
+                return;
+            }
+            _ => {}
+        }
     }
 }
