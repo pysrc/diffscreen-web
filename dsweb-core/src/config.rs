@@ -1,5 +1,5 @@
-// 传输像素保留位数（右边0越多压缩程度越大）
-pub const BIT_MASK: u8 = 0b1111_1000;
+// 传输像素保留位数（0~8,越大压缩率越高，失真率越高）
+pub const BIT_MASK: u8 = 4;
 
 // 最小检测区域宽
 pub const SW: usize = 100;

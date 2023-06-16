@@ -138,8 +138,8 @@ fn screen_stream(mut stream: Writer<TcpStream>, running: Arc<AtomicBool>) {
     let (mut a, srw, srh) = get_rgb_block(w, h, sw, sh, 2);
     let block_len = srw * srh;
     let (mut b, _, _) = get_rgb_block(w, h, sw, sh, 2);
-    // 发送w, h, sw, sh
-    let mut meta = vec![0u8;8];
+    // 发送w, h, sw, sh, mask
+    let mut meta = vec![0u8;9];
     meta[0] = (w >> 8) as u8;
     meta[1] = w as u8;
     meta[2] = (h >> 8) as u8;
@@ -148,6 +148,7 @@ fn screen_stream(mut stream: Writer<TcpStream>, running: Arc<AtomicBool>) {
     meta[5] = sw as u8;
     meta[6] = (sh >> 8) as u8;
     meta[7] = sh as u8;
+    meta[8] = config::BIT_MASK;
     (stream, _) = ws_send(stream, meta);
     let mut sendbuf = Vec::<u8>::with_capacity(1024 * 4);
     while running.load(Ordering::Relaxed) {

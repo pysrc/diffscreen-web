@@ -45,17 +45,19 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
     let (fw, fh) = (Rc::new(RwLock::new(0u32)), Rc::new(RwLock::new(0u32)));
     let canvas1 = canvas.clone();
     let (tfw, tfh) = (fw.clone(), fh.clone());
+    let mut bit_mask = 0u8;
     let onmessage_callback = Closure::wrap(Box::new(move |e: MessageEvent| {
         if let Ok(abuf) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
             let array = js_sys::Uint8Array::new(&abuf);
             let data = array.to_vec();
             let len = array.byte_length() as usize;
-            if len == 8 {
+            if len == 9 {
                 // 初始化w, h
                 let w = ((data[0] as u32) << 8) | (data[1] as u32);
                 let h = ((data[2] as u32) << 8) | (data[3] as u32);
                 sw = ((data[4] as u32) << 8) | (data[5] as u32);
                 sh = ((data[6] as u32) << 8) | (data[7] as u32);
+                bit_mask = data[8];
                 srw = (w / sw) + if w % sw == 0 {0u32} else {1u32};
                 if let Ok(mut tfw) = tfw.write() {
                     *tfw = w;
@@ -83,7 +85,7 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
                         .chunks_exact_mut(4)
                         .zip((temp[2..]).chunks_exact(3))
                         .for_each(|(c, b)| {
-                            (c[0], c[1], c[2], c[3]) = (b[0], b[1], b[2], 255u8);
+                            (c[0], c[1], c[2], c[3]) = (b[0] << bit_mask, b[1] << bit_mask, b[2] << bit_mask, 255u8);
                         });
                     let im = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&real_img), sw, sh)
                         .unwrap();

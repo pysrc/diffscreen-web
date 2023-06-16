@@ -17,9 +17,9 @@ pub fn sub_areas_bgra(bgra: &[u8], recs: &mut Vec<Vec<u8>>, w: usize, h: usize, 
                         let g = bgra[index + 1];
                         let b = bgra[index];
                         let rec_index = (j*sw + k) * 3;
-                        rec[rec_index] = r & config::BIT_MASK;
-                        rec[rec_index+1] = g & config::BIT_MASK;
-                        rec[rec_index+2] = b & config::BIT_MASK;
+                        rec[rec_index] = r >> config::BIT_MASK;
+                        rec[rec_index+1] = g >> config::BIT_MASK;
+                        rec[rec_index+2] = b >> config::BIT_MASK;
                     }
                 }
             }
