@@ -9,6 +9,7 @@ use enigo::MouseControllable;
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
 use websocket::sync::Client;
+use std::fs;
 use std::io::Write;
 use std::net::Ipv4Addr;
 use std::net::SocketAddrV4;
@@ -198,6 +199,22 @@ fn screen_stream(mut stream: Writer<TcpStream>, running: Arc<AtomicBool>) {
     }
 }
 
+fn get_files(dir: &str) -> Vec<String> {
+    let mut res = Vec::<String>::new();
+    let mt = fs::metadata(dir);
+    if mt.is_err() {
+        fs::create_dir(dir).unwrap();
+        return res;
+    }
+    let folder = fs::read_dir(dir).unwrap();
+    for file in folder {
+        let f = file.unwrap();
+        if f.file_type().unwrap().is_file() {
+            res.push(f.path().file_name().unwrap().to_string_lossy().to_string());
+        }
+    }
+    return res;
+}
 
 fn handle_transfer(client: Client<TcpStream>) {
     let (mut receiver, mut sender) = client.split().unwrap();
@@ -220,6 +237,11 @@ fn handle_transfer(client: Client<TcpStream>) {
                         txt.insert_str(0, "copy-text ");
                         sender.send_message(&OwnedMessage::Text(txt)).unwrap();
                     }
+                } else if ctx.starts_with("file-list") {
+                    let fss = get_files("files");
+                    let mut res = fss.join("&");
+                    res.insert_str(0, "file-list ");
+                    sender.send_message(&OwnedMessage::Text(res)).unwrap();
                 }
             }
             OwnedMessage::Ping(ping) => {

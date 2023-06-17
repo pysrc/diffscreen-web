@@ -4,7 +4,7 @@ var ws = null;
 var transfer_ws = null;
 var transferdom = null;
 
-const start = (canvasid, transferid, url) => {    
+const start = (canvasid, transferid, url, files_callback) => {    
     init().then(()=>{
         ws = start_websocket(canvasid, url);
         transferdom = document.getElementById(transferid);
@@ -17,6 +17,12 @@ const start = (canvasid, transferid, url) => {
             if(d.startsWith("copy-text")) {
                 d = d.replace("copy-text ", "");
                 transferdom.value = d;
+            } else if(d.startsWith("file-list")) {
+                d = d.replace("file-list ", "");
+                if(d) {
+                    var files = d.split("&");
+                    files_callback(files);
+                }
             }
         };
     });
@@ -36,9 +42,14 @@ const copy_text = () => {
     transfer_ws.send("copy-text");
 }
 
+const file_list_refresh = () => {
+    transfer_ws.send("file-list");
+}
+
 export {
     start,
     stop,
     paste_text,
     copy_text,
+    file_list_refresh,
 };

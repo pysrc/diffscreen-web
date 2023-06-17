@@ -23,12 +23,27 @@
         <button onclick="dsweb.copy_text()">复制出来（文本）</button>
         <button onclick="dsweb.paste_text()">复制进去（文本）</button>
     </div>
+    <div style="margin-top: 10px;margin-left: 30%;">
+        <button onclick="file_list_refresh()">文件列表刷新</button>
+        <select id="files" style="width: 200px;"></select>
+        <button onclick="">下载选中文件</button>
+        <button>文件上传</button>
+    </div>
 </body>
 <script>
     var scale_rate = 0.05;
     var hostdom = document.getElementById("host");
     function start() {
-        dsweb.start("canvas", "transfer", hostdom.value);
+        dsweb.start("canvas", "transfer", hostdom.value, (files) => {
+            var doms = "";
+            for (var index = 0; index < files.length; index++) {
+                const element = files[index];
+                var sdom = `<option value="${element}">${element}</option>`;
+                doms += sdom;
+            }
+            var files = document.getElementById("files");
+            files.innerHTML = doms;
+        });
     }
     function stop() {
         dsweb.stop();
@@ -44,6 +59,9 @@
         var rect = c.getBoundingClientRect();
         c.style.width = `${(1 - scale_rate) * rect.width}px`;
         c.style.height = `${(1 - scale_rate) * rect.height}px`;
+    }
+    function file_list_refresh() {
+        dsweb.file_list_refresh();
     }
 </script>
 </html>

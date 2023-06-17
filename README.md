@@ -14,6 +14,8 @@
 
 * https://github.com/quadrupleslap/scrap
 * https://github.com/enigo-rs/enigo
+* https://github.com/aweinstock314/rust-clipboard
+
 
 ## 计划中的功能
 
