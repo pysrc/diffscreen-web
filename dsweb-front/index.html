@@ -24,26 +24,20 @@
         <button onclick="dsweb.paste_text()">复制进去（文本）</button>
     </div>
     <div style="margin-top: 10px;margin-left: 30%;">
+        <label>文件传输：</label>
+        <input id="http_url" value="http://127.0.0.1:41291">
         <button onclick="file_list_refresh()">文件列表刷新</button>
         <select id="files" style="width: 200px;"></select>
-        <button onclick="">下载选中文件</button>
-        <button>文件上传</button>
+        <button onclick="download()">下载选中文件</button>
+        <input id="file" type="file" onchange="upload()">
     </div>
 </body>
 <script>
     var scale_rate = 0.05;
     var hostdom = document.getElementById("host");
+    var http_url_dom = document.getElementById("http_url");
     function start() {
-        dsweb.start("canvas", "transfer", hostdom.value, (files) => {
-            var doms = "";
-            for (var index = 0; index < files.length; index++) {
-                const element = files[index];
-                var sdom = `<option value="${element}">${element}</option>`;
-                doms += sdom;
-            }
-            var files = document.getElementById("files");
-            files.innerHTML = doms;
-        });
+        dsweb.start("canvas", "transfer", hostdom.value);
     }
     function stop() {
         dsweb.stop();
@@ -61,7 +55,26 @@
         c.style.height = `${(1 - scale_rate) * rect.height}px`;
     }
     function file_list_refresh() {
-        dsweb.file_list_refresh();
+        dsweb.file_list_refresh(http_url_dom.value, (files) => {
+            var doms = "";
+            for (var index = 0; index < files.length; index++) {
+                const element = files[index];
+                var sdom = `<option value="${element}">${element}</option>`;
+                doms += sdom;
+            }
+            var files = document.getElementById("files");
+            files.innerHTML = doms;
+        });
+    }
+    function download() {
+        var file = document.getElementById("files").value;
+        dsweb.download(http_url_dom.value, file);
+    }
+    function upload() {
+        const fileInput = document.getElementById('file');
+        dsweb.upload(http_url_dom.value, fileInput.files[0], (n)=> {
+            console.log(`Upload progress: ${n}%`);
+        });
     }
 </script>
 </html>
