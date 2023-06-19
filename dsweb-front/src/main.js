@@ -58,6 +58,9 @@ const download = (http_url, filename) => {
 }
 
 const upload = (http_url, file, progress_callback) => {
+    if(!file) {
+        return;
+    }
     const formData = new FormData();
     formData.append('file', file);
     const xhr = new XMLHttpRequest();
