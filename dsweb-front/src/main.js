@@ -4,11 +4,11 @@ var ws = null;
 var transfer_ws = null;
 var transferdom = null;
 
-const start = (canvasid, transferid, ws_url) => {
+const start = (canvasid, transferid) => {
     init().then(()=>{
-        ws = start_websocket(canvasid, ws_url);
+        ws = start_websocket(canvasid, `ws://${location.host}/diffscreen`);
         transferdom = document.getElementById(transferid);
-        transfer_ws = new WebSocket(ws_url, "diffscreen-transfer");
+        transfer_ws = new WebSocket(`ws://${location.host}/diffscreen-cb`);
         transfer_ws.onopen = function(event) {
             console.log('Transfer Websocket 已经连接');
         };
@@ -36,35 +36,32 @@ const copy_text = () => {
     transfer_ws.send("copy-text");
 }
 
-const file_list_refresh = (http_url, files_callback) => {
-    fetch(`${http_url}/files`).then(function(response) {
+const file_list_refresh = (files_callback) => {
+    fetch(`/list`).then(function(response) {
         if(response.ok) {
-            response.text().then((txt)=>{
-                if(txt) {
-                    let ts = txt.split("&");
-                    files_callback(ts);
-                }
+            response.json().then((txt)=>{
+                files_callback(txt);
             });
         }
     });
 }
 
-const download = (http_url, filename) => {
+const download = (filename) => {
     if(filename) {
-        window.open(`${http_url}/download/${filename}`);
+        window.open(`/files/${filename}`);
     } else {
         alert("请刷新文件列表");
     }
 }
 
-const upload = (http_url, file, progress_callback) => {
+const upload = (file, progress_callback) => {
     if(!file) {
         return;
     }
     const formData = new FormData();
     formData.append('file', file);
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${http_url}/upload`, true);
+    xhr.open('POST', `/upload`, true);
     xhr.upload.addEventListener('progress', function(event) {
         const progress = event.loaded / event.total * 100;
         progress_callback(progress);

@@ -7,12 +7,12 @@ edition = "2021"
 
 [dependencies]
 dscom = {path = "../dscom"}
-websocket = "0.26.5"
+tokio = { version = "1", features = ["full"] }
+futures-util = "0.3"
+tokio-stream = "0.1"
+warp = { version = "0.3", features = ["multipart", "websocket"]}
+
 scrap = "0.5"
 enigo = "0.1.2"
 flate2 = "1.0"
 clipboard = "0.5"
-tiny_http = "0.11"
-ascii = "1.0"
-percent-encoding = "2.3.0"
-multipart = {version = "0.18", features = ["server", "tiny_http"]}

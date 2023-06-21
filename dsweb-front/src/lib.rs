@@ -38,7 +38,7 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
         .unwrap()
         .dyn_into::<CanvasRenderingContext2d>()
         .unwrap();
-    let ws: WebSocket = WebSocket::new_with_str(host, "diffscreen")?;
+    let ws: WebSocket = WebSocket::new(host)?;
     ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
     let mut real_img = Vec::<u8>::new();
     let (mut sw, mut sh, mut srw) = (0u32, 0u32, 0u32);

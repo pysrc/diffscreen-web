@@ -8,7 +8,24 @@
 
 `cargo build --release --workspace --exclude dsweb-front`
 
-然后切换到dsweb-front，编译前端工程，参照里面的README
+这里会编译出可执行文件：
+`./target/release/dsweb-core`
+
+然后切换到dsweb-front，编译前端工程，参照里面的README，然后将打包后的产物跟index.html放在当前public目录下，运行dsweb-core即可
+
+产物结构如下
+```
+│ dsweb-core.exe
+|
+├─files
+└─public
+        29ff266c59292a226eee.wasm
+        dsweb.js
+        index.html
+```
+
+其中files文件夹是上传下载的中转文件夹，
+访问地址（如果是本地）：http://127.0.0.1:41290
 
 ## 第三方库依赖安装参考（主要是linux）
 
