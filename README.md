@@ -27,6 +27,12 @@
 其中files文件夹是上传下载的中转文件夹，
 访问地址（如果是本地）：http://127.0.0.1:41290
 
+## Linux下如何通过ssh登入后显示桌面
+
+首先需要有X11桌面环境，然后通过ssh进入后需要设置环境变量：
+`export DISPLAY=:0`
+然后就可以运行dsweb-core程序愉快远程了！
+
 ## 第三方库依赖安装参考（主要是linux）
 
 * https://github.com/quadrupleslap/scrap
