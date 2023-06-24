@@ -1,9 +1,7 @@
 [package]
 name = "dsweb-core"
-version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+version = "0.0.2"
+edition = "2023"
 
 [dependencies]
 dscom = {path = "../dscom"}
@@ -11,6 +9,7 @@ tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"
 tokio-stream = "0.1"
 warp = { version = "0.3", features = ["multipart", "websocket"]}
+clap = { version = "4", features = ["derive"]}
 
 scrap = "0.5"
 enigo = "0.1.2"

@@ -5,8 +5,9 @@ mod screen_stream;
 mod ctrl_event;
 mod key_mouse;
 
-use std::fs;
+use std::{fs, net::SocketAddrV4, str::FromStr};
 
+use clap::{command, Parser, arg};
 use clipboard::{ClipboardContext, ClipboardProvider};
 use futures_util::{TryStreamExt, StreamExt, SinkExt};
 use screen::Cap;
@@ -34,7 +35,22 @@ fn get_files(dir: &str) -> Vec<String> {
     return res;
 }
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Bind
+    #[arg(short, long, default_value_t = String::from("0.0.0.0:41290"))]
+    bind: String,
+    /// Static resource directory
+    #[arg(short, long, default_value_t = String::from("public"))]
+    webroot: String,
+    /// File directory
+    #[arg(short, long, default_value_t = String::from("files"))]
+    files: String,
+}
+
 fn main() {
+    let args = Args::parse();
     let cap = Cap::new(config::SW, config::SH, 2);
     let (w, h, sw, sh, _) = cap.size_info();
     // 发送w, h, sw, sh, mask
@@ -53,7 +69,7 @@ fn main() {
     std::thread::spawn(|| {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            async_server(rx, meta).await;
+            async_server(rx, meta, args).await;
         });
     });
     screen_stream::screen_stream(cap, tx);
@@ -69,24 +85,30 @@ impl Clone for MutiReceiver {
     }
 }
 
-async fn async_server(srx: Receiver<Message>, meta: Message) {
+async fn async_server(srx: Receiver<Message>, meta: Message, args: Args) {
     // 文件上传下载路径
-    const FILE_DIR: &str = "files";
+    static mut FILE_DIR: String = String::new();
     // 静态web文件路径
-    const PUBLIC_RESOURCE: &str = "public";
-    fcheck(FILE_DIR);
-    fcheck(PUBLIC_RESOURCE);
+    static mut PUBLIC_RESOURCE: String = String::new();
+    unsafe {
+        FILE_DIR.push_str(&args.files);
+        PUBLIC_RESOURCE.push_str(&args.webroot);
+    }
+    unsafe {
+        fcheck(&FILE_DIR);
+        fcheck(&PUBLIC_RESOURCE);
+    }
     // 静态请求
-    let public_route = warp::get().and(warp::fs::dir(PUBLIC_RESOURCE));
+    let public_route = warp::get().and(warp::fs::dir(unsafe { &PUBLIC_RESOURCE }));
     // 文件列表
     let file_list = warp::get().and(warp::path("list")).map(|| {
-        let fls = get_files(FILE_DIR);
+        let fls = unsafe { get_files(&FILE_DIR) };
         warp::reply::json(&fls)
     });
     // 文件下载
     let file_download = warp::get()
         .and(warp::path("files"))
-        .and(warp::fs::dir(FILE_DIR));
+        .and(warp::fs::dir(unsafe {&FILE_DIR}));
     // 文件上传
     let upload = warp::multipart::form()
     .and(warp::path("upload"))
@@ -94,7 +116,7 @@ async fn async_server(srx: Receiver<Message>, meta: Message) {
         let field_names: Vec<_> = form
             .and_then(|mut field| async move {
                 eprintln!("upload {}", field.filename().unwrap());
-                let mut file = tokio::fs::File::create(format!("{}/{}", FILE_DIR, field.filename().unwrap())).await.unwrap();
+                let mut file = tokio::fs::File::create(format!("{}/{}", unsafe{&FILE_DIR}, field.filename().unwrap())).await.unwrap();
                 while let Some(content) = field.data().await {
                     let content = content.unwrap();
                     let chunk: &[u8] = content.chunk();
@@ -199,8 +221,8 @@ async fn async_server(srx: Receiver<Message>, meta: Message) {
             });
         })
     });
-    
+    let bind = SocketAddrV4::from_str(&args.bind).unwrap();
     warp::serve(public_route.or(file_list).or(file_download).or(upload).or(diffscreen_ws).or(clipboard_ws))
-        .run(([0, 0, 0, 0], 41290))
+        .run(bind)
         .await;
 }
