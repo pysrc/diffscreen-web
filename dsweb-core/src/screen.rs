@@ -1,8 +1,8 @@
 use scrap::Capturer;
 use scrap::Display;
 use std::io::ErrorKind::WouldBlock;
+use std::slice::from_raw_parts;
 use std::time::Duration;
-use crate::imop;
 
 /**
  * 截屏
@@ -10,23 +10,17 @@ use crate::imop;
 pub struct Cap {
     w: usize,
     h: usize,
-    sw: usize, 
-    sh: usize, 
-    offset: usize,
     capturer: Option<Capturer>,
     sleep: Duration,
 }
 impl Cap {
-    pub fn new(sw: usize, sh: usize, offset: usize) -> Cap {
+    pub fn new() -> Cap {
         let display = Display::primary().unwrap();
         let capturer = Capturer::new(display).unwrap();
         let (w, h) = (capturer.width(), capturer.height());
         Cap {
             w,
             h,
-            sw,
-            sh,
-            offset,
             capturer: Some(capturer),
             sleep: Duration::new(1, 0) / 60,
         }
@@ -47,12 +41,11 @@ impl Cap {
         };
         self.capturer = Some(capturer);
     }
-    #[inline]
-    pub fn size_info(&self) -> (usize, usize, usize, usize, usize) {
-        return (self.w, self.h, self.sw, self.sh, self.offset);
+    pub fn wh(&self) -> (usize, usize) {
+        (self.w, self.h)
     }
     #[inline]
-    pub fn cap(&mut self, cap_buf: &mut Vec<Vec<u8>>) {
+    pub fn cap(&mut self) -> &[u8] {
         loop {
             match &mut self.capturer {
                 Some(capturer) => {
@@ -72,9 +65,7 @@ impl Cap {
                             }
                         }
                     };
-                    // 转换成rgb图像数组
-                    imop::sub_areas_bgra(&buffer, cap_buf, self.w, self.h, self.sw, self.sh, self.offset);
-                    break;
+                    return unsafe { from_raw_parts(buffer.as_ptr(), buffer.len()) };
                 }
                 None => {
                     std::thread::sleep(std::time::Duration::from_millis(200));

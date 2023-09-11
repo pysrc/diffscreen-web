@@ -3,10 +3,11 @@ use std::{rc::Rc, sync::RwLock, io::Write};
 use flate2::write::DeflateDecoder;
 use wasm_bindgen::{prelude::*, Clamped};
 use web_sys::{
-    CanvasRenderingContext2d, ErrorEvent, Event, HtmlCanvasElement, ImageData, KeyboardEvent,
-    MessageEvent, MouseEvent, WebSocket, WheelEvent,
+    CanvasRenderingContext2d, Event, HtmlCanvasElement, ImageData, KeyboardEvent,
+    MessageEvent, MouseEvent, WebSocket, WheelEvent
 };
 mod bitmap;
+mod convert;
 
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
@@ -23,7 +24,11 @@ extern "C" {
 }
 
 #[wasm_bindgen]
-pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue> {
+pub fn start_websocket(canvas_id: &str, host: &str, width: usize, height: usize, n: usize, m: usize) -> Result<(), JsValue> {
+    let subimage_width = width / n;
+    let subimage_height = height / m;
+    let subplane_size = subimage_width * subimage_height;
+
     let window = web_sys::window().unwrap();
     let document = window.document().unwrap();
     let canvas = document.get_element_by_id(canvas_id).unwrap();
@@ -32,77 +37,62 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
         .map_err(|_| ())
         .unwrap();
     canvas.set_tab_index(1);
+    canvas.set_width(width as u32);
+    canvas.set_height(height as u32);
+
     let ctx = canvas
         .get_context("2d")
         .unwrap()
         .unwrap()
         .dyn_into::<CanvasRenderingContext2d>()
         .unwrap();
-    let ws: WebSocket = WebSocket::new(host)?;
-    ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
-    let mut real_img = Vec::<u8>::new();
-    let (mut sw, mut sh, mut srw) = (0u32, 0u32, 0u32);
-    let (fw, fh) = (Rc::new(RwLock::new(0u32)), Rc::new(RwLock::new(0u32)));
-    let canvas1 = canvas.clone();
-    let (tfw, tfh) = (fw.clone(), fh.clone());
-    let mut bit_mask = 0u8;
-    let onmessage_callback = Closure::wrap(Box::new(move |e: MessageEvent| {
-        if let Ok(abuf) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
-            let array = js_sys::Uint8Array::new(&abuf);
-            let data = array.to_vec();
-            let len = array.byte_length() as usize;
-            if len == 9 {
-                // 初始化w, h
-                let w = ((data[0] as u32) << 8) | (data[1] as u32);
-                let h = ((data[2] as u32) << 8) | (data[3] as u32);
-                sw = ((data[4] as u32) << 8) | (data[5] as u32);
-                sh = ((data[6] as u32) << 8) | (data[7] as u32);
-                bit_mask = data[8];
-                srw = (w / sw) + if w % sw == 0 {0u32} else {1u32};
-                if let Ok(mut tfw) = tfw.write() {
-                    *tfw = w;
-                }
-                if let Ok(mut tfh) = tfh.write() {
-                    *tfh = h;
-                }
-                canvas1.set_width(w);
-                canvas1.set_height(h);
-                console_log!("w = {} h = {}", w, h);
-                real_img = vec![0u8; (sw * sh * 4) as usize];
-            } else {
-                // 接收原图像
+    for k in 0..n * m {
+        let screenurl = format!("ws://{}/diffscreen/{}", host, k);
+        let ws: WebSocket = WebSocket::new_with_str(&screenurl, "diffscreen").unwrap();
+        ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
+        let ctx = ctx.clone();
+        // 真实的所在列
+        let rm = ((k % n) * subimage_width) as f64;
+        // 真实的所在行
+        let rn = ((k / n) * subimage_height) as f64;
+        let onmsg = Closure::wrap(Box::new(move |e: MessageEvent| {
+            if let Ok(abuf) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
+                let array = js_sys::Uint8Array::new(&abuf);
+                let cpr = array.to_vec();
                 let mut row_recv = Vec::with_capacity(1024 * 8);
                 let mut e = DeflateDecoder::new(row_recv);
-                e.write_all(&data).unwrap();
+                e.write_all(&cpr).unwrap();
                 row_recv = e.finish().unwrap();
-                let mut row_recv = &row_recv[..];
-                let end = (sw * sh * 3) as usize + 2;
-                while row_recv.len() > 0 {
-                    let temp = &row_recv[..end];
-                    row_recv = &row_recv[end..];
-                    let k = ((temp[0] as usize) << 8) | (temp[1] as usize);
-                    real_img
-                        .chunks_exact_mut(4)
-                        .zip((temp[2..]).chunks_exact(3))
-                        .for_each(|(c, b)| {
-                            (c[0], c[1], c[2], c[3]) = (b[0] << bit_mask, b[1] << bit_mask, b[2] << bit_mask, 255u8);
-                        });
-                    let im = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&real_img), sw, sh)
+                // 解码成rgba
+                let mut rgba = vec![0u8; subplane_size * 4];
+                convert::i420_to_rgba(subimage_width, subimage_height, &row_recv[..subplane_size], &row_recv[subplane_size..subplane_size + subplane_size/4], &row_recv[subplane_size + subplane_size/4..], &mut rgba);
+                let im = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&rgba), subimage_width as u32, subimage_height as u32)
                         .unwrap();
-                    let ih = sh * (k as u32 / srw);
-                    let iw = sw * (k as u32 % srw);
-                    ctx.put_image_data(&im, iw as f64, ih as f64).unwrap();
+                // 画子图像
+                ctx.put_image_data(&im, rm, rn).unwrap();
+            }
+        }) as Box<dyn FnMut(MessageEvent)>);
+        let _ws = ws.clone();
+        let onopen = Closure::wrap(Box::new(move |e: MessageEvent| { 
+            match _ws.send_with_u8_array(&[(k >> 8) as u8, k as u8]) {
+                Ok(_) => {
+                    console_log!("success {}", k);
+                }
+                Err(e) => {
+                    console_log!("{:?}", e);
                 }
             }
-        }
-    }) as Box<dyn FnMut(MessageEvent)>);
-    ws.set_onmessage(Some(onmessage_callback.as_ref().unchecked_ref()));
-    onmessage_callback.forget();
-    let onerror_callback = Closure::wrap(Box::new(move |e: ErrorEvent| {
-        console_log!("error event: {:?}", e);
-    }) as Box<dyn FnMut(ErrorEvent)>);
-    ws.set_onerror(Some(onerror_callback.as_ref().unchecked_ref()));
-    onerror_callback.forget();
+        }) as Box<dyn FnMut(MessageEvent)>);
+        ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
+        onopen.forget();
+        ws.set_onmessage(Some(onmsg.as_ref().unchecked_ref()));
+        onmsg.forget();
+        
+    }
+    let ctrlurl = format!("ws://{}/ctrl", host);
+    let ws: WebSocket = WebSocket::new_with_str(&ctrlurl, "ctrl").unwrap();
+    ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
+    let (fw, fh) = (Rc::new(RwLock::new(width as u32)), Rc::new(RwLock::new(height as u32)));
 
     // 鼠标悬停，获取焦点
     let cavas2 = canvas.clone();
@@ -230,5 +220,5 @@ pub fn start_websocket(canvas_id: &str, host: &str) -> Result<WebSocket, JsValue
     canvas.set_onkeyup(Some(keyup.as_ref().unchecked_ref()));
     keyup.forget();
 
-    Ok(ws)
+    Ok(())
 }

@@ -5,11 +5,8 @@ edition = "2021"
 
 [dependencies]
 dscom = {path = "../dscom"}
-tokio = { version = "1", features = ["full"] }
-futures-util = "0.3"
-tokio-stream = "0.1"
-warp = { version = "0.3", features = ["multipart", "websocket"]}
 clap = { version = "4", features = ["derive"]}
+rouille = "3.6.2"
 
 scrap = "0.5"
 enigo = "0.1.2"
