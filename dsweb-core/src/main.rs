@@ -17,6 +17,8 @@ mod screen;
 
 use std::fs;
 use std::io::Write;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -43,6 +45,29 @@ fn get_files(dir: &str) -> Vec<String> {
         }
     }
     return res;
+}
+
+// 计算数据checksum
+#[inline]
+fn checksum(mid: u32, buf: &[u8]) -> u32 {
+    let mut i = 0usize;
+    let mut result = mid;
+    while i < buf.len() {
+        let k = i + 1;
+        if k >= buf.len() {
+            result += (buf[i] as u32) << 8;
+            while result > 0xffff {
+                result = (result >> 16) + (result & 0xffff);
+            }
+            break;
+        }
+        result += ((buf[i] as u32) << 8) | (buf[k] as u32);
+        while result > 0xffff {
+            result = (result >> 16) + (result & 0xffff);
+        }
+        i += 2;
+    }
+    result
 }
 
 #[derive(Parser, Debug)]
@@ -72,6 +97,8 @@ fn main() {
     let (sender, receiver) = std::sync::mpsc::channel();
 
     let (temp_sender, temp_receiver) = std::sync::mpsc::channel();
+
+    let refresh = Arc::new(AtomicBool::new(true));
 
     let data_sender_map = Arc::new(Mutex::new(Vec::<Sender<Vec<u8>>>::new()));
     let wsmap = Arc::new(Mutex::new(
@@ -123,6 +150,7 @@ fn main() {
             }
         });
     }
+    let refreshc = refresh.clone();
     std::thread::spawn(move || {
         let mut cap = Cap::new();
         let (w, h) = cap.wh();
@@ -136,7 +164,7 @@ fn main() {
         meta[5] = N as u8;
         sender.send(meta).unwrap();
         let (sw, sh, mut yuvs) = imop::split_meta_info(w, h, N, M);
-        let (_, _, mut _yuvs) = imop::split_meta_info(w, h, N, M);
+        let mut _check = vec![0u16; M * N];
         let mut yuv = Vec::<u8>::new();
         loop {
             // 截图
@@ -145,19 +173,27 @@ fn main() {
             imop::split_i420_into_subimages(&yuv, &mut yuvs, w, h, N, M);
             // 找出变化的发送给前端
             let mut count = 0;
+            let mut not_all = true;
+            if refreshc.load(Ordering::Relaxed) {
+                refreshc.store(false, Ordering::Relaxed);
+                not_all = false;
+            }
             for k in 0..M * N {
                 // 对比Y分量即可
-                let _new = yuvs.get(&k).unwrap();
-                let _old = _yuvs.get(&k).unwrap();
-                if _new[..sw * sh] == _old[..sw * sh] {
-                    continue;
+                if not_all  {
+                    let _new = yuvs.get(&k).unwrap();
+                    let cs = (!checksum(0, &_new[..sw * sh])) as u16;
+                    if cs == _check[k] {
+                        continue;
+                    }
+                    _check[k] = cs;
                 }
                 count += 1;
                 let temp = yuvs.remove(&k).unwrap();
                 // eprintln!("K {} {:p}", k, temp.as_ptr());
                 // 发送到第k个分组
                 if let Ok(sdr) = data_sender_map.lock() {
-                    // todo 这里待修改
+                    // 这里待修改
                     sdr[k].send(temp).unwrap();
                 }
             }
@@ -166,7 +202,6 @@ fn main() {
                 let (k, temp) = temp_receiver.recv().unwrap();
                 yuvs.insert(k, temp);
             }
-            (_yuvs, yuvs) = (yuvs, _yuvs);
         }
     });
     let meta = receiver.recv().unwrap();
@@ -189,6 +224,10 @@ fn main() {
             (GET) (/diffscreen/{k: usize}) => {
                 let (response, websocket) = try_or_400!(websocket::start(&request, Some("diffscreen")));
                 let wsmap = wsmap.clone();
+                // 最后一个进入的连接
+                if k == M * N - 1 {
+                    refresh.store(true, Ordering::Relaxed);
+                }
                 std::thread::spawn(move ||{
                     let rws = websocket.recv().unwrap();
                     if let Ok(wm) = wsmap.lock() {
