@@ -109,6 +109,7 @@ fn main() {
                         // eprintln!("P {} {:p}", k, temp.as_ptr());
                         wsv.retain_mut(|wss| {
                             if let Err(_) = wss.send_binary(&buf) {
+                                eprintln!("worker stop {}", k);
                                 false
                             } else {
                                 true
@@ -192,6 +193,7 @@ fn main() {
                     let rws = websocket.recv().unwrap();
                     if let Ok(wm) = wsmap.lock() {
                         if let Ok(mut wmv) = wm[k].lock() {
+                            eprintln!("worker start {}", k);
                             wmv.push(rws);
                         }
                     }

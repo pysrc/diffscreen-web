@@ -13,9 +13,9 @@ mod convert;
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
-macro_rules! console_log {
-    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
-}
+// macro_rules! console_log {
+//     ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
+// }
 
 #[wasm_bindgen]
 extern "C" {
@@ -72,19 +72,6 @@ pub fn start_websocket(canvas_id: &str, host: &str, width: usize, height: usize,
                 ctx.put_image_data(&im, rm, rn).unwrap();
             }
         }) as Box<dyn FnMut(MessageEvent)>);
-        let _ws = ws.clone();
-        let onopen = Closure::wrap(Box::new(move |_| { 
-            match _ws.send_with_u8_array(&[(k >> 8) as u8, k as u8]) {
-                Ok(_) => {
-                    console_log!("success {}", k);
-                }
-                Err(e) => {
-                    console_log!("{:?}", e);
-                }
-            }
-        }) as Box<dyn FnMut(MessageEvent)>);
-        ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
-        onopen.forget();
         ws.set_onmessage(Some(onmsg.as_ref().unchecked_ref()));
         onmsg.forget();
         
