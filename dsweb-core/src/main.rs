@@ -181,26 +181,31 @@ fn main() {
             for k in 0..M * N {
                 // 对比Y分量即可
                 if not_all  {
-                    let _new = yuvs.get(&k).unwrap();
-                    let cs = (!checksum(0, &_new[..sw * sh])) as u16;
-                    if cs == _check[k] {
-                        continue;
+                    let _new = yuvs.get(k).unwrap();
+                    if let Some(v) = _new {
+                        let cs = (!checksum(0, &v[..sw * sh])) as u16;
+                        if cs == _check[k] {
+                            continue;
+                        }
+                        _check[k] = cs;
                     }
-                    _check[k] = cs;
                 }
                 count += 1;
-                let temp = yuvs.remove(&k).unwrap();
+                let temp = yuvs.get_mut(k).unwrap();
+                let tvec = temp.take();
+                let tvec = tvec.unwrap();
                 // eprintln!("K {} {:p}", k, temp.as_ptr());
                 // 发送到第k个分组
                 if let Ok(sdr) = data_sender_map.lock() {
                     // 这里待修改
-                    sdr[k].send(temp).unwrap();
+                    sdr[k].send(tvec).unwrap();
                 }
             }
             // 等待线程返回
             for _ in 0..count {
                 let (k, temp) = temp_receiver.recv().unwrap();
-                yuvs.insert(k, temp);
+                let tempptr = yuvs.get_mut(k).unwrap();
+                tempptr.replace(temp);
             }
         }
     });

@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 
 /// yuv图像分裂成m行n列
 pub fn split_meta_info(
@@ -6,13 +5,12 @@ pub fn split_meta_info(
     height: usize,
     n: usize,
     m: usize,
-) -> (usize, usize, HashMap<usize, Vec<u8>>) {
-    let mut subimages = HashMap::with_capacity(n * m);
-    // let mut subimages = Vec::with_capacity(n * m);
+) -> (usize, usize, Vec<Option<Vec<u8>>>) {
+    let mut subimages = Vec::with_capacity(n * m);
     let subimage_width = width / n;
     let subimage_height = height / m;
-    for k in 0..n * m {
-        subimages.insert(k, vec![0u8; subimage_width * subimage_height * 3 / 2]);
+    for _ in 0..n * m {
+        subimages.push(Some(vec![0u8; subimage_width * subimage_height * 3 / 2]));
     }
     (subimage_width, subimage_height, subimages)
 }
@@ -20,7 +18,7 @@ pub fn split_meta_info(
 /// 将i420图像切割成m行n列的子图像列表
 pub fn split_i420_into_subimages(
     i420_data: &Vec<u8>,
-    subimages: &mut HashMap<usize, Vec<u8>>,
+    subimages: &mut Vec<Option<Vec<u8>>>,
     width: usize,
     height: usize,
     n: usize,
@@ -38,7 +36,7 @@ pub fn split_i420_into_subimages(
     let mut k = 0;
     for j in 0..m {
         for i in 0..n {
-            let img = subimages.get_mut(&k);
+            let img = subimages.get_mut(k).unwrap();
             if let Some(img) = img {
                 // Calculate the starting index for each plane (Y, U, V)
                 let y_start = (j * subimage_height) * width + (i * subimage_width);
