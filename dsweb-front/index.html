@@ -10,8 +10,7 @@
 <body>
     <canvas id="canvas" style="margin: 0 auto; display: block;width: 1000px;"></canvas>
     <div style="margin-top: 10px; margin-left: 40%;">
-        <button onclick="start()">开始</button>
-        <button onclick="stop()">关闭</button>
+        <button id="start" onclick="start()">开始</button>
         <button onclick="add()">+</button>
         <button onclick="sub()">-</button>
     </div>
@@ -34,9 +33,8 @@
     var scale_rate = 0.05;
     function start() {
         dsweb.start("canvas", "transfer");
-    }
-    function stop() {
-        dsweb.stop();
+        var c = document.getElementById("start");
+        c.style = 'visibility:hidden';
     }
     function add() {
         var c = document.getElementById("canvas");

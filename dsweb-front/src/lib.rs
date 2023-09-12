@@ -73,7 +73,7 @@ pub fn start_websocket(canvas_id: &str, host: &str, width: usize, height: usize,
             }
         }) as Box<dyn FnMut(MessageEvent)>);
         let _ws = ws.clone();
-        let onopen = Closure::wrap(Box::new(move |e: MessageEvent| { 
+        let onopen = Closure::wrap(Box::new(move |_| { 
             match _ws.send_with_u8_array(&[(k >> 8) as u8, k as u8]) {
                 Ok(_) => {
                     console_log!("success {}", k);

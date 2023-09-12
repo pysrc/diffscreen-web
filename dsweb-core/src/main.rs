@@ -1,5 +1,7 @@
 #[macro_use]
 extern crate rouille;
+use clipboard::ClipboardContext;
+use clipboard::ClipboardProvider;
 use enigo::Enigo;
 use enigo::KeyboardControllable;
 use enigo::MouseControllable;
@@ -13,6 +15,7 @@ mod imop;
 mod key_mouse;
 mod screen;
 
+use std::fs;
 use std::io::Write;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
@@ -35,17 +38,17 @@ use screen::Cap;
 //     }
 // }
 
-// fn get_files(dir: &str) -> Vec<String> {
-//     let mut res = Vec::<String>::new();
-//     let folder = fs::read_dir(dir).unwrap();
-//     for file in folder {
-//         let f = file.unwrap();
-//         if f.file_type().unwrap().is_file() {
-//             res.push(f.path().file_name().unwrap().to_string_lossy().to_string());
-//         }
-//     }
-//     return res;
-// }
+fn get_files(dir: &str) -> Vec<String> {
+    let mut res = Vec::<String>::new();
+    let folder = fs::read_dir(dir).unwrap();
+    for file in folder {
+        let f = file.unwrap();
+        if f.file_type().unwrap().is_file() {
+            res.push(f.path().file_name().unwrap().to_string_lossy().to_string());
+        }
+    }
+    return res;
+}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -196,10 +199,42 @@ fn main() {
                 });
                 response
             },
+            (GET) (/clipboard) => {
+                // 粘贴板ws
+                let (response, websocket) = try_or_400!(websocket::start(&request, Some("clipboard")));
+                std::thread::spawn(move ||{
+                    clipboardws(websocket.recv().unwrap());
+                });
+                response
+            },
+            (GET) (/list) => {
+                // 获取文件列表
+                let fls = get_files(&args.files);
+                Response::json(&fls)
+            },
+            (GET) (/files/{filename: String}) => {
+                // 文件下载
+                eprintln!("download {}", filename);
+                if let Some(request) = request.remove_prefix("/files") {
+                    rouille::match_assets(&request, &args.files)
+                } else {
+                    rouille::Response::empty_404()
+                }
+            },
+            (POST) (/upload) => {
+                // 文件上传
+                let data = try_or_400!(post_input!(request, {
+                    file: rouille::input::post::BufferedFile,
+                }));
+                if let Some(filename) = data.file.filename {
+                    let mut file = fs::File::create(format!("{}/{}", &args.files, filename)).unwrap();
+                    file.write_all(&data.file.data).unwrap();
+                }
+                rouille::Response::html("Success!")
+            },
             _ => {
                 // 静态文件服务器
-                let response = rouille::match_assets(&request, "public");
-                response
+                rouille::match_assets(&request, &args.webroot)
             }
         )
     });
@@ -251,6 +286,23 @@ fn ctrlws(mut ws: websocket::Websocket) {
         }
     }
 }
+
+fn clipboardws(mut ws: websocket::Websocket) {
+    let mut cbctx: ClipboardContext = ClipboardProvider::new().unwrap();
+    while let Some(msg) = ws.next() {
+        if let websocket::Message::Text(text) = msg {
+            if text.starts_with("paste-text") {
+                let text = text.replacen("paste-text ", "", 1);
+                cbctx.set_contents(text).unwrap();
+            } else if text.starts_with("copy-text") {
+                if let Ok(mut txt) = cbctx.get_contents() {
+                    txt.insert_str(0, "copy-text ");
+                    ws.send_text(&txt).unwrap();
+                }
+            }
+        }
+    }
+}
 // struct MutiReceiver {
 //     inner: Receiver<Message>
 // }
@@ -292,12 +344,12 @@ fn ctrlws(mut ws: websocket::Websocket) {
 //         let field_names: Vec<_> = form
 //             .and_then(|mut field| async move {
 //                 eprintln!("upload {}", field.filename().unwrap());
-//                 let mut file = tokio::fs::File::create(format!("{}/{}", unsafe{&FILE_DIR}, field.filename().unwrap())).await.unwrap();
-//                 while let Some(content) = field.data().await {
-//                     let content = content.unwrap();
-//                     let chunk: &[u8] = content.chunk();
-//                     file.write_all(chunk).await.unwrap();
-//                 }
+                // let mut file = tokio::fs::File::create(format!("{}/{}", unsafe{&FILE_DIR}, field.filename().unwrap())).await.unwrap();
+                // while let Some(content) = field.data().await {
+                //     let content = content.unwrap();
+                //     let chunk: &[u8] = content.chunk();
+                //     file.write_all(chunk).await.unwrap();
+                // }
 //                 Ok(())
 //             })
 //             .try_collect()
@@ -368,16 +420,16 @@ fn ctrlws(mut ws: websocket::Websocket) {
 //                         Ok(message) => {
 //                             if message.is_text() {
 //                                 let ctx = message.to_str().unwrap();
-//                                 if ctx.starts_with("paste-text") {
-//                                     let ctx = ctx.replacen("paste-text ", "", 1);
-//                                     cbctx.set_contents(ctx).unwrap();
-//                                 } else if ctx.starts_with("copy-text") {
-//                                     if let Ok(mut txt) = cbctx.get_contents() {
-//                                         txt.insert_str(0, "copy-text ");
-//                                         let txt = Message::text(txt);
-//                                         tx.send(txt).unwrap();
-//                                     }
-//                                 }
+                                // if ctx.starts_with("paste-text") {
+                                //     let ctx = ctx.replacen("paste-text ", "", 1);
+                                //     cbctx.set_contents(ctx).unwrap();
+                                // } else if ctx.starts_with("copy-text") {
+                                //     if let Ok(mut txt) = cbctx.get_contents() {
+                                //         txt.insert_str(0, "copy-text ");
+                                //         let txt = Message::text(txt);
+                                //         tx.send(txt).unwrap();
+                                //     }
+                                // }
 //                             }
 //                         }
 //                         Err(e) => {
