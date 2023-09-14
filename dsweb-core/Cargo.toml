@@ -9,6 +9,6 @@ clap = { version = "4", features = ["derive"]}
 rouille = "3.6.2"
 
 scrap = "0.5"
-enigo = "0.1.2"
+enigo = {path = "../lib/enigo"}
 flate2 = "1.0"
 clipboard = "0.5"
