@@ -55,6 +55,7 @@ pub fn start_websocket(canvas_id: &str, host: &str, width: usize, height: usize,
         let rm = ((k % n) * subimage_width) as f64;
         // 真实的所在行
         let rn = ((k / n) * subimage_height) as f64;
+        let ws1 = ws.clone();
         let onmsg = Closure::wrap(Box::new(move |e: MessageEvent| {
             if let Ok(abuf) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
                 let array = js_sys::Uint8Array::new(&abuf);
@@ -70,6 +71,7 @@ pub fn start_websocket(canvas_id: &str, host: &str, width: usize, height: usize,
                         .unwrap();
                 // 画子图像
                 ctx.put_image_data(&im, rm, rn).unwrap();
+                ws1.send_with_str("S").unwrap();
             }
         }) as Box<dyn FnMut(MessageEvent)>);
         ws.set_onmessage(Some(onmsg.as_ref().unchecked_ref()));

@@ -94,6 +94,8 @@ fn main() {
     fcheck(&args.files);
 
     let bind = SocketAddrV4::from_str(&args.bind).unwrap();
+    // let (sync_sender, sync_receiver) = std::sync::mpsc::channel::<>();
+
     let (sender, receiver) = std::sync::mpsc::channel();
 
     let (temp_sender, temp_receiver) = std::sync::mpsc::channel();
@@ -139,7 +141,12 @@ fn main() {
                                 eprintln!("worker stop {}", k);
                                 false
                             } else {
-                                true
+                                if let Some(_) = wss.next() {
+                                    true
+                                } else {
+                                    eprintln!("worker stop {}", k);
+                                    false
+                                }
                             }
                         });
                     }
