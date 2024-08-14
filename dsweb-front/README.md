@@ -4,7 +4,7 @@
 
 [wasm-pack安装教程](https://rustwasm.github.io/wasm-pack/installer/)
 
-`npm i webpack webpack-cli -D`
+`npm install`
 
 ## 编译
 

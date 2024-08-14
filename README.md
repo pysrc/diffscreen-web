@@ -38,10 +38,3 @@
 * https://github.com/quadrupleslap/scrap
 * https://github.com/enigo-rs/enigo
 * https://github.com/aweinstock314/rust-clipboard
-
-
-## 计划中的功能
-
-* ~~文件传输~~
-* 移动端键盘鼠标适配
-* webrtc协议转换

@@ -1,3 +1,5 @@
+
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 var path = require("path")
 
 module.exports = {
@@ -13,4 +15,11 @@ module.exports = {
         libraryTarget: 'umd'
     },
     mode: "production",
+    plugins: [
+        new CopyWebpackPlugin({
+            patterns: [
+                { from: path.resolve(__dirname, "public"), to: path.resolve(__dirname, "dist") },
+            ],
+        }),
+    ],
 }
